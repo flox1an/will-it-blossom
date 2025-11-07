@@ -1,0 +1,32 @@
+{
+  "name": "will-it-blossom",
+  "version": "0.1.0",
+  "description": "Conformance testing framework for Blossom servers",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:run": "tsx src/runner/index.ts run",
+    "test:list": "tsx src/runner/index.ts list",
+    "test:doctor": "tsx src/runner/index.ts doctor",
+    "report:site": "tsx scripts/build-site.ts",
+    "clean": "rm -rf dist artifacts site"
+  },
+  "keywords": ["blossom", "testing", "conformance", "nostr"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "tsx": "^4.7.0"
+  },
+  "dependencies": {
+    "testcontainers": "^10.13.0",
+    "undici": "^6.19.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.0",
+    "globby": "^14.0.0"
+  }
+}

@@ -1,0 +1,32 @@
+name: "almond"
+start:
+  type: "docker"
+  image: "ghcr.io/flox1an/almond:main"
+  platform: "linux/amd64"
+  env:
+    BIND_ADDR: "0.0.0.0:3000"
+    STORAGE_PATH: "/app/files"
+  ports:
+    - "3000/tcp"
+  volumes:
+    - type: "temp"
+      target: "/app/files"
+  wait:
+    http:
+      path: "/"
+      status: 200
+      timeoutMs: 30000
+
+baseUrl: "http://localhost:${PORT_3000}"
+
+capabilities:
+  - "core:health"
+  - "core:upload"
+  - "core:download"
+  - "core:list"
+
+limits:
+  maxUploadMb: 100
+
+secrets:
+  authToken: null

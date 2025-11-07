@@ -1,0 +1,4 @@
+defaultTarget: almond
+targets:
+  - name: almond
+    config: ./servers/configs/almond.yml
