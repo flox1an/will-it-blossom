@@ -1,15 +1,15 @@
-name: "almond"
+name: "route96"
 start:
   type: "docker-compose"
-  file: "./servers/compose/almond.yml"
-  project: "almond-tests"
+  file: "./servers/compose/route96.yml"
+  project: "route96-tests"
   wait:
     http:
       path: "/"
       status: 200
-      timeoutMs: 30000
+      timeoutMs: 90000
 
-baseUrl: "http://localhost:4300"
+baseUrl: "http://localhost:4800"
 
 capabilities:
   - "core:health"
@@ -21,14 +21,15 @@ capabilities:
   - "auth:nip98"
   - "media:thumbnails"
   - "bud04:mirror"
+  - "bud05:media"
   - "bud06:upload-head"
   - "bud08:nip94"
+  - "bud09:report"
 
 limits:
   maxUploadMb: 100
 
 secrets:
-  authToken: null
   nip98:
     privateKey: "0905f531a95e329b1fe5a70e993eea2758102b9b254077f6ecd0228594d1069b"
     publicKey: "331d7f124e0dfb8d5ec81c5b0099d01e544d06bdd4277630719a4ac47ca8be12"

@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { loadRootConfig, loadServerConfig } from './config.js';
-import { startTarget } from './orchestrator.js';
+import { startTarget, type StartedTarget } from './orchestrator.js';
 import { writeFeatureMatrix, writeServerInfo, writeManifest } from './reporters/feature-matrix.js';
+import { writeRunResultsFromJUnit } from './reporters/json-reporter.js';
 
 // Ensure DOCKER_HOST is set for Testcontainers
 // Check common Docker socket locations if not already set
@@ -60,7 +61,7 @@ async function runTests(targetName?: string) {
     const serverConfig = await loadServerConfig(targetConfig.config);
     const targetArtifactsDir = join(artifactsDir, targetConfig.name);
 
-    let target;
+    let target: StartedTarget | undefined;
     try {
       // Start the target
       target = await startTarget(serverConfig);
@@ -68,8 +69,10 @@ async function runTests(targetName?: string) {
       // Write server info
       await writeServerInfo(targetArtifactsDir, {
         name: serverConfig.name,
+        baseUrl: target.baseUrl,
         image: serverConfig.start.type === 'docker' ? serverConfig.start.image : undefined,
         command: serverConfig.start.type === 'process' ? serverConfig.start.command : undefined,
+        specVersion: serverConfig.specVersion,
         capabilities: serverConfig.capabilities,
         limits: serverConfig.limits,
       });
@@ -109,13 +112,29 @@ async function runTests(targetName?: string) {
         proc.on('error', reject);
       });
 
-      // Write feature matrix
-      await writeFeatureMatrix(targetArtifactsDir, serverConfig.capabilities, []);
-
-      manifestTargets.push({
-        id: targetConfig.name,
-        path: join(targetConfig.name, 'results.json'),
+      const results = await writeRunResultsFromJUnit({
+        junitPath: join(targetArtifactsDir, 'junit.xml'),
+        outDir: targetArtifactsDir,
+        meta: {
+          runId,
+          target: targetConfig.name,
+          baseUrl: target.baseUrl,
+          specVersion: serverConfig.specVersion,
+          capabilities: serverConfig.capabilities,
+        },
+      }).catch(error => {
+        console.error(`Failed to build JSON results for ${targetConfig.name}:`, error);
+        return undefined;
       });
+
+      await writeFeatureMatrix(targetArtifactsDir, serverConfig.capabilities, results?.tests ?? []);
+
+      if (results) {
+        manifestTargets.push({
+          id: targetConfig.name,
+          path: join(targetConfig.name, 'results.json'),
+        });
+      }
 
       console.log(`\nTarget ${targetConfig.name} completed`);
     } catch (error) {
@@ -144,10 +163,18 @@ async function listTests() {
   console.log('Available tests:');
   console.log('\nCore tests:');
   console.log('  - Health check (requires: core:health)');
+  console.log('  - CORS & preflight headers (requires: core:health)');
   console.log('  - Upload/Download (requires: core:upload, core:download)');
-  console.log('  - List blobs (requires: core:list)');
+  console.log('  - List blobs by pubkey (requires: core:list, auth:nip98)');
+  console.log('  - Delete blobs (requires: core:delete, auth:nip98)');
   console.log('\nOptional tests:');
   console.log('  - Range requests (requires: http:range-requests)');
+  console.log('  - Mirror endpoint (requires: bud04:mirror, auth:nip98)');
+  console.log('  - Media optimization (requires: bud05:media)');
+  console.log('  - HEAD /upload requirements (requires: bud06:upload-head)');
+  console.log('  - Payment-required endpoints (requires: bud07:payments)');
+  console.log('  - NIP-94 metadata (requires: bud08:nip94)');
+  console.log('  - Blob reporting (requires: bud09:report)');
 }
 
 async function doctor() {

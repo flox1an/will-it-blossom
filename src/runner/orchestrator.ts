@@ -2,7 +2,12 @@ import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 import { spawn } from 'node:child_process';
 import { setTimeout as waitMs } from 'node:timers/promises';
 import * as http from 'node:http';
-import type { ServerConfig, DockerStart, ProcessStart } from './config.js';
+import type {
+  ServerConfig,
+  DockerStart,
+  DockerComposeStart,
+  ProcessStart,
+} from './config.js';
 
 export type StartedTarget = {
   baseUrl: string;
@@ -14,6 +19,8 @@ export type StartedTarget = {
 export async function startTarget(cfg: ServerConfig): Promise<StartedTarget> {
   if (cfg.start.type === 'docker') {
     return startDockerTarget(cfg, cfg.start);
+  } else if (cfg.start.type === 'docker-compose') {
+    return startDockerComposeTarget(cfg, cfg.start);
   } else if (cfg.start.type === 'process') {
     return startProcessTarget(cfg, cfg.start);
   }
@@ -158,6 +165,76 @@ async function startProcessTarget(cfg: ServerConfig, start: ProcessStart): Promi
   };
 }
 
+async function startDockerComposeTarget(
+  cfg: ServerConfig,
+  start: DockerComposeStart,
+): Promise<StartedTarget> {
+  console.log(`Starting docker compose project: ${start.project}`);
+
+  // Clean up any previous stack
+  await dockerComposeDown(start).catch((error) => {
+    console.warn(`Failed to clean docker compose project ${start.project}: ${error instanceof Error ? error.message : error}`);
+  });
+
+  const child = spawn('docker', composeArgs(start, 'up'), {
+    cwd: start.cwd,
+    env: { ...process.env, ...(start.env ?? {}) },
+    stdio: 'pipe',
+  });
+
+  const logs: string[] = [];
+  child.stdout?.on('data', (data) => {
+    const msg = data.toString();
+    logs.push(msg);
+    console.log(`[${cfg.name}] ${msg}`);
+  });
+  child.stderr?.on('data', (data) => {
+    const msg = data.toString();
+    logs.push(msg);
+    console.error(`[${cfg.name}] ${msg}`);
+  });
+
+  child.on('error', (err) => {
+    console.error(`docker compose process error: ${err.message}`);
+  });
+
+  const baseUrl = cfg.baseUrl;
+  await waitForHttp(
+    baseUrl + start.wait.http.path,
+    start.wait.http.status,
+    start.wait.http.timeoutMs
+  );
+
+  console.log(`docker compose project ${start.project} ready at ${baseUrl}`);
+
+  return {
+    baseUrl,
+    capabilities: cfg.capabilities ?? [],
+    meta: {
+      type: 'docker-compose',
+      project: start.project,
+      file: start.file,
+      logs,
+    },
+    stop: async () => {
+      console.log(`Stopping docker compose project ${start.project}...`);
+      child.kill('SIGTERM');
+      await waitMs(200);
+      if (!child.killed) {
+        child.kill('SIGKILL');
+      }
+
+      await dockerComposeDown(start).catch((error) => {
+        console.warn(
+          `Failed to stop docker compose project ${start.project}: ${
+            error instanceof Error ? error.message : error
+          }`
+        );
+      });
+    },
+  };
+}
+
 async function waitForHttp(url: string, expectStatus: number, timeoutMs: number): Promise<void> {
   const start = Date.now();
   let lastError: Error | null = null;
@@ -196,6 +273,34 @@ async function stopDockerContainer(container: StartedTestContainer): Promise<voi
       throw new Error(`Docker stop timed out after ${stopTimeoutMs}ms`);
     }),
   ]);
+}
+
+function composeArgs(start: DockerComposeStart, command: string, ...extra: string[]): string[] {
+  return ['compose', '-p', start.project, '-f', start.file, command, ...extra];
+}
+
+async function dockerComposeDown(start: DockerComposeStart): Promise<void> {
+  await runDockerCompose(start, ['down', '-v', '--remove-orphans']);
+}
+
+function runDockerCompose(start: DockerComposeStart, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('docker', composeArgs(start, ...args), {
+      cwd: start.cwd,
+      env: { ...process.env, ...(start.env ?? {}) },
+      stdio: 'inherit',
+    });
+
+    proc.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`docker compose exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', reject);
+  });
 }
 
 async function forceRemoveDockerContainer(containerId: string): Promise<void> {

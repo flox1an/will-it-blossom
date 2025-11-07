@@ -54,7 +54,12 @@ After running tests, generate a static website:
 pnpm report:site
 ```
 
-Then open `site/index.html` in your browser.
+Serve the generated reports locally (defaults to http://127.0.0.1:4173):
+```bash
+pnpm report:serve
+```
+
+Then open `site/index.html` directly or visit the served URL in your browser.
 
 ## Configuration
 
@@ -73,24 +78,25 @@ Example (`servers/configs/almond.yml`):
 ```yaml
 name: "almond"
 start:
-  type: "docker"
-  image: "ghcr.io/flox1an/almond:main"
-  env:
-    PORT: "8080"
-  ports:
-    - "8080/tcp"
+  type: "docker-compose"
+  file: "./servers/compose/almond.yml"
+  project: "almond-tests"
   wait:
     http:
       path: "/"
       status: 200
       timeoutMs: 30000
-baseUrl: "http://localhost:${PORT_8080}"
+baseUrl: "http://localhost:4300"
 capabilities:
   - "core:health"
   - "core:upload"
   - "core:download"
   - "core:list"
 ```
+
+Bundled targets:
+- `almond` – lightweight reference server for the core Blossom flow, launched via `servers/compose/almond.yml`
+- `route96` – full-featured implementation (`voidic/route96`) started automatically via `servers/compose/route96.yml`, which brings up the Route96 app alongside its MariaDB dependency. Make sure the `docker compose` CLI is available before running this target.
 
 ### Root Configuration
 
@@ -112,11 +118,18 @@ The framework supports the following capabilities:
 - `core:upload` - File upload
 - `core:download` - File download
 - `core:list` - List stored blobs
+- `core:delete` - Delete blobs
 
 ### Optional
 - `http:range-requests` - HTTP range request support
 - `auth:nip98` - NIP-98 authentication
 - `media:thumbnails` - Thumbnail generation
+- `bud04:mirror` - `/mirror` endpoint for copying blobs
+- `bud05:media` - `/media` processing endpoint
+- `bud06:upload-head` - `HEAD /upload` preflight checks
+- `bud07:payments` - Paid upload/download flows (402 responses)
+- `bud08:nip94` - NIP-94 metadata descriptors
+- `bud09:report` - `/report` endpoint for blob moderation
 
 Tests that require unsupported capabilities are automatically skipped.
 

@@ -49,6 +49,7 @@ export async function writeServerInfo(
   outDir: string,
   info: {
     name: string;
+    baseUrl: string;
     image?: string;
     command?: string;
     specVersion?: string;

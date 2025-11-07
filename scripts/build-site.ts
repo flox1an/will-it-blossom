@@ -2,6 +2,7 @@
 
 import { readdir, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { writeRunResultsFromJUnit, type RunResults } from '../src/runner/reporters/json-reporter.js';
 
 type Manifest = {
   runId: string;
@@ -9,26 +10,11 @@ type Manifest = {
   targets: Array<{ id: string; path: string }>;
 };
 
-type RunResults = {
-  runId: string;
-  target: string;
+type StoredServerInfo = {
+  name?: string;
+  baseUrl?: string;
   specVersion?: string;
-  baseUrl: string;
-  capabilities: string[];
-  summary: {
-    passed: number;
-    failed: number;
-    skipped: number;
-    durationMs: number;
-  };
-  tests: Array<{
-    title: string;
-    status: string;
-    requirements?: string[];
-    durationMs: number;
-    skipReason?: string;
-    error?: { message: string };
-  }>;
+  capabilities?: string[];
 };
 
 function layout(title: string, body: string): string {
@@ -91,18 +77,34 @@ async function renderRun(
 
   for (const t of manifest.targets) {
     const resultsPath = join(artifactsDir, manifest.runId, t.path);
+    let res: RunResults | undefined;
 
     try {
       const resultsContent = await readFile(resultsPath, 'utf8');
-      const res: RunResults = JSON.parse(resultsContent);
+      res = JSON.parse(resultsContent) as RunResults;
+    } catch (error) {
+      const errno = error as NodeJS.ErrnoException;
+      if (errno?.code === 'ENOENT') {
+        res = await regenerateResultsFromArtifacts(artifactsDir, manifest.runId, t.id);
+      }
 
-      // Render target page
-      const file = join(runOut, `${t.id}.html`);
-      const caps = res.capabilities.map(c => `<code>${c}</code>`).join(' ');
+      if (!res) {
+        console.warn(`Could not render target ${t.id}:`, error);
+        continue;
+      }
+    }
 
-      const testsRows = res.tests
-        .map(
-          te => `
+    if (!res) {
+      continue;
+    }
+
+    // Render target page
+    const file = join(runOut, `${t.id}.html`);
+    const caps = res.capabilities.map(c => `<code>${c}</code>`).join(' ');
+
+    const testsRows = res.tests
+      .map(
+        te => `
         <tr class="test-${te.status}">
           <td>${escapeHtml(te.title)}</td>
           <td><span class="status-${te.status}">${te.status}</span></td>
@@ -110,10 +112,10 @@ async function renderRun(
           <td>${te.durationMs}ms</td>
           <td>${te.skipReason ? escapeHtml(te.skipReason) : ''}</td>
         </tr>`
-        )
-        .join('');
+      )
+      .join('');
 
-      const body = `
+    const body = `
       <h2>Target: ${t.id} ${statusBadge(res.summary)}</h2>
       <div class="info-grid">
         <div><strong>Base URL:</strong> ${res.baseUrl}</div>
@@ -154,11 +156,8 @@ async function renderRun(
       </div>
     `;
 
-      await writeFile(file, layout(`${manifest.runId} – ${t.id}`, body), 'utf8');
-      targetLinks += `<li><a href="./${t.id}.html">${t.id}</a></li>`;
-    } catch (error) {
-      console.warn(`Could not render target ${t.id}:`, error);
-    }
+    await writeFile(file, layout(`${manifest.runId} – ${t.id}`, body), 'utf8');
+    targetLinks += `<li><a href="./${t.id}.html">${t.id}</a></li>`;
   }
 
   // Render run index
@@ -170,6 +169,53 @@ async function renderRun(
   `;
 
   await writeFile(join(runOut, 'index.html'), layout(`Run ${manifest.runId}`, body), 'utf8');
+}
+
+async function regenerateResultsFromArtifacts(
+  artifactsDir: string,
+  runId: string,
+  targetId: string
+): Promise<RunResults | undefined> {
+  const targetDir = join(artifactsDir, runId, targetId);
+  const junitPath = join(targetDir, 'junit.xml');
+
+  try {
+    await stat(junitPath);
+  } catch {
+    return undefined;
+  }
+
+  const serverInfo = await readJsonFile<StoredServerInfo>(join(targetDir, 'server-info.json'));
+  const capabilities = Array.isArray(serverInfo?.capabilities)
+    ? (serverInfo?.capabilities as string[])
+    : [];
+
+  try {
+    console.warn(`results.json missing for ${targetId} in run ${runId}, rebuilding from junit.xml`);
+    return await writeRunResultsFromJUnit({
+      junitPath,
+      outDir: targetDir,
+      meta: {
+        runId,
+        target: targetId,
+        baseUrl: serverInfo?.baseUrl ?? 'unknown',
+        specVersion: serverInfo?.specVersion,
+        capabilities,
+      },
+    });
+  } catch (error) {
+    console.warn(`Failed to rebuild results for ${targetId}:`, error);
+    return undefined;
+  }
+}
+
+async function readJsonFile<T>(path: string): Promise<T | undefined> {
+  try {
+    const raw = await readFile(path, 'utf8');
+    return JSON.parse(raw) as T;
+  } catch {
+    return undefined;
+  }
 }
 
 function escapeHtml(text: string): string {

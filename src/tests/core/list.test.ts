@@ -2,33 +2,50 @@ import { describe, expect } from 'vitest';
 import { testIf } from '../../runner/testHelpers.js';
 import { requires } from '../../runner/capabilities.js';
 import { ctx } from '../setup.js';
+import { uploadBlob } from '../helpers/blobs.js';
+import type { BlobDescriptor } from '../helpers/blobs.js';
+import { buildNip98Header } from '../helpers/authorization.js';
 
-describe('Core: List Blobs', () => {
-  testIf(requires('core:list')(ctx.capabilities))('GET /list returns blob list', async () => {
-    const response = await ctx.http.get(`${ctx.baseUrl}/list`);
+const canList = requires('core:list')(ctx.capabilities);
+const hasAuth = requires('auth:nip98')(ctx.capabilities);
+const uploaderPubkey = ctx.secrets.nip98?.publicKey as string | undefined;
+
+function authorize(hash: string) {
+  if (!hasAuth) {
+    return undefined;
+  }
+  return buildNip98Header(ctx, { verb: 'upload', hashes: [hash] });
+}
+
+describe('BUD-02: Blob listing', () => {
+  const shouldRun = Boolean(canList && uploaderPubkey);
+
+  testIf(shouldRun)('GET /list/<pubkey> returns sorted blob descriptors', async () => {
+    const upload = await uploadBlob(ctx, {
+      authorizationFactory: hash => authorize(hash),
+    });
+    expect(upload.response.status).toBe(200);
+
+    const response = await ctx.http.get(`${ctx.baseUrl}/list/${uploaderPubkey}`);
     expect(response.status).toBe(200);
 
-    // Response should be JSON array
-    const data = JSON.parse(response.body);
-    expect(Array.isArray(data)).toBe(true);
-  });
+    const descriptors = JSON.parse(response.body) as BlobDescriptor[];
+    expect(Array.isArray(descriptors)).toBe(true);
+    expect(descriptors.length).toBeGreaterThan(0);
 
-  testIf(requires('core:list')(ctx.capabilities))('List includes uploaded blobs', async () => {
-    // Upload a test file
-    const testData = Buffer.from('Test file for list');
-    await ctx.http.put(`${ctx.baseUrl}/upload`, {
-      body: testData,
-      headers: {
-        'Content-Type': 'application/octet-stream',
-      },
-    });
+    const first = descriptors[0];
+    expect(first).toHaveProperty('url');
+    expect(first).toHaveProperty('sha256');
+    expect(first).toHaveProperty('size');
+    expect(first).toHaveProperty('type');
+    expect(first).toHaveProperty('uploaded');
 
-    // Get list
-    const response = await ctx.http.get(`${ctx.baseUrl}/list`);
-    const data = JSON.parse(response.body);
+    for (let i = 1; i < descriptors.length; i += 1) {
+      expect(descriptors[i - 1].uploaded).toBeGreaterThanOrEqual(descriptors[i].uploaded);
+    }
 
-    expect(data.length).toBeGreaterThan(0);
-    // Each item should have at least a hash/id
-    expect(data[0]).toHaveProperty('sha256');
+    const uploadedEntry = descriptors.find((item: BlobDescriptor) => item.sha256 === upload.hash);
+    expect(uploadedEntry).toBeDefined();
+    expect(uploadedEntry.url).toContain(upload.hash);
   });
 });

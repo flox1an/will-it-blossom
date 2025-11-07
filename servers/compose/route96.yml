@@ -1,0 +1,24 @@
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: route96
+    volumes:
+      - route96-db:/var/lib/mysql
+
+  app:
+    image: voidic/route96
+    depends_on:
+      - db
+    environment:
+      RUST_LOG: info
+    ports:
+      - "4800:8000"
+    volumes:
+      - route96-files:/app/data
+      - ../configs/route96.config.yaml:/app/config.yaml:ro
+
+volumes:
+  route96-db:
+  route96-files:

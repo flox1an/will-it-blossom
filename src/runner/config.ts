@@ -25,6 +25,15 @@ const DockerStartSchema = z.object({
   wait: WaitConfigSchema,
 });
 
+const DockerComposeStartSchema = z.object({
+  type: z.literal('docker-compose'),
+  file: z.string(),
+  project: z.string(),
+  cwd: z.string().optional(),
+  env: z.record(z.string()).optional(),
+  wait: WaitConfigSchema,
+});
+
 const ProcessStartSchema = z.object({
   type: z.literal('process'),
   command: z.string(),
@@ -36,8 +45,9 @@ const ProcessStartSchema = z.object({
 
 const ServerConfigSchema = z.object({
   name: z.string(),
-  start: z.union([DockerStartSchema, ProcessStartSchema]),
+  start: z.union([DockerStartSchema, DockerComposeStartSchema, ProcessStartSchema]),
   baseUrl: z.string(),
+  specVersion: z.string().optional(),
   capabilities: z.array(z.string()).optional().default([]),
   limits: z.record(z.unknown()).optional(),
   secrets: z.record(z.unknown()).optional(),
@@ -45,6 +55,7 @@ const ServerConfigSchema = z.object({
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 export type DockerStart = z.infer<typeof DockerStartSchema>;
+export type DockerComposeStart = z.infer<typeof DockerComposeStartSchema>;
 export type ProcessStart = z.infer<typeof ProcessStartSchema>;
 
 const RootConfigSchema = z.object({

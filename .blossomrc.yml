@@ -2,3 +2,5 @@ defaultTarget: almond
 targets:
   - name: almond
     config: ./servers/configs/almond.yml
+  - name: route96
+    config: ./servers/configs/route96.yml
