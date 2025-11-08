@@ -56,7 +56,7 @@ function initializeRun(): RunContext {
 }
 
 /**
- * Runs internal tests (helper unit tests) that must pass before running spec tests.
+ * Runs internal tests (helper and runner unit tests) that must pass before running spec tests.
  * Internal tests run with fail-fast behavior - any failure stops execution immediately.
  */
 async function runInternalTests(): Promise<void> {
@@ -67,6 +67,8 @@ async function runInternalTests(): Promise<void> {
     'run',
     '--reporter=verbose',
     '--bail=1', // Exit immediately on first failure
+    // Include all __tests__ directories (runner and helper tests)
+    'src/runner/__tests__',
     'src/tests/helpers/__tests__',
   ];
 
@@ -108,8 +110,8 @@ async function runVitestForTarget(
     '--reporter=verbose',
     '--reporter=junit',
     `--outputFile=${join(artifactsDir, 'junit.xml')}`,
-    // Exclude internal tests from spec test runs
-    '--exclude=**/helpers/__tests__/**',
+    // Exclude all internal tests from spec test runs
+    '--exclude=**/__tests__/**',
   ];
 
   const env = {
