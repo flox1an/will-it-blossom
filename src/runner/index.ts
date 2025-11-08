@@ -56,7 +56,48 @@ function initializeRun(): RunContext {
 }
 
 /**
- * Runs Vitest tests for a specific target.
+ * Runs internal tests (helper and runner unit tests) that must pass before running spec tests.
+ * Internal tests run with fail-fast behavior - any failure stops execution immediately.
+ */
+async function runInternalTests(): Promise<void> {
+  console.log('\nRunning internal tests...');
+
+  const vitestArgs = [
+    'vitest',
+    'run',
+    '--reporter=verbose',
+    '--bail=1', // Exit immediately on first failure
+    // Include all __tests__ directories (runner and helper tests)
+    'src/runner/__tests__',
+    'src/tests/helpers/__tests__',
+  ];
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('npx', vitestArgs, {
+      stdio: 'inherit',
+      env: process.env,
+    });
+
+    proc.on('exit', (code) => {
+      if (code === 0) {
+        console.log('✓ All internal tests passed\n');
+        resolve();
+      } else {
+        reject(new Error(
+          `Internal tests failed with code ${code}. ` +
+          `Spec tests will not run until internal tests pass.`
+        ));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to run internal tests: ${err.message}`));
+    });
+  });
+}
+
+/**
+ * Runs Vitest tests for a specific target (spec tests only, excluding internal tests).
  */
 async function runVitestForTarget(
   targetName: string,
@@ -69,6 +110,8 @@ async function runVitestForTarget(
     '--reporter=verbose',
     '--reporter=junit',
     `--outputFile=${join(artifactsDir, 'junit.xml')}`,
+    // Exclude all internal tests from spec test runs
+    '--exclude=**/__tests__/**',
   ];
 
   const env = {
@@ -228,6 +271,10 @@ async function runTests(targetName?: string): Promise<void> {
     );
     process.exit(1);
   }
+
+  // Run internal tests first with fail-fast behavior
+  // If these fail, the entire test run is aborted
+  await runInternalTests();
 
   const runContext = initializeRun();
 
