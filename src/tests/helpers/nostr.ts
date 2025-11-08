@@ -1,4 +1,5 @@
 import { finalizeEvent, type Event, type EventTemplate } from 'nostr-tools';
+import { hexToBytes } from 'nostr-tools/utils';
 import { Buffer } from 'node:buffer';
 
 export interface KeyPair {
@@ -29,7 +30,8 @@ export function signEvent(keys: KeyPair, template: Omit<EventTemplate, 'pubkey'>
     content: template.content ?? '',
   };
 
-  return finalizeEvent(normalizedTemplate, keys.privateKey);
+  const privateKeyBytes = hexToBytes(keys.privateKey);
+  return finalizeEvent(normalizedTemplate, privateKeyBytes);
 }
 
 export function buildAuthorizationHeader(keys: KeyPair, options: AuthorizationOptions): string {

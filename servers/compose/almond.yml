@@ -5,6 +5,7 @@ services:
     environment:
       BIND_ADDR: 0.0.0.0:3000
       STORAGE_PATH: /app/files
+      ALLOWED_NPUBS: npub1xvwh7yjwphac6hkgr3dspxwsre2y6p4a6snhvvr3nf9vgl9ghcfqupxecx
     ports:
       - "4300:3000"
     tmpfs:

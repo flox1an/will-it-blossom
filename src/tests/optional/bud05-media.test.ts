@@ -22,12 +22,17 @@ describe('BUD-05: Media optimization', () => {
     const mediaData = Buffer.from('sample-media-data');
     const hash = createHash('sha256').update(mediaData).digest('hex');
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+    };
+    const authHeader = maybeAuthorize('media', hash);
+    if (authHeader) {
+      headers.Authorization = authHeader;
+    }
+
     const response = await ctx.http.put(`${ctx.baseUrl}/media`, {
       body: mediaData,
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        Authorization: maybeAuthorize('media', hash),
-      },
+      headers,
     });
 
     expect(response.status).toBeLessThan(400);

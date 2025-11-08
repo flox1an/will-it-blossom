@@ -20,6 +20,7 @@ describe('BUD-09: Blob reporting', () => {
 
     const event = signEvent(reporterKeys!, {
       kind: 1984,
+      created_at: Math.floor(Date.now() / 1000),
       tags: [
         ['x', upload.hash, 'content-warning'],
         ['reason', 'Test coverage report'],

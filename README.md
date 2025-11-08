@@ -97,6 +97,7 @@ capabilities:
 Bundled targets:
 - `almond` – lightweight reference server for the core Blossom flow, launched via `servers/compose/almond.yml`
 - `route96` – full-featured implementation (`voidic/route96`) started automatically via `servers/compose/route96.yml`, which brings up the Route96 app alongside its MariaDB dependency. Make sure the `docker compose` CLI is available before running this target.
+- `blossom-reference` – the upstream reference server (`ghcr.io/hzrd149/blossom-server`) wired up via `servers/compose/blossom-reference.yml` and the bundled `servers/configs/blossom-server.config.yml`, exposing richer media/NIP-94 coverage out of the box.
 
 ### Root Configuration
 
@@ -197,7 +198,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [almond, blossom-server]
+        target: [almond, route96, blossom-reference]
     steps:
       - uses: actions/checkout@v3
       - uses: pnpm/action-setup@v2

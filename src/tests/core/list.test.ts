@@ -46,6 +46,9 @@ describe('BUD-02: Blob listing', () => {
 
     const uploadedEntry = descriptors.find((item: BlobDescriptor) => item.sha256 === upload.hash);
     expect(uploadedEntry).toBeDefined();
+    if (!uploadedEntry) {
+      return;
+    }
     expect(uploadedEntry.url).toContain(upload.hash);
   });
 });

@@ -4,3 +4,5 @@ targets:
     config: ./servers/configs/almond.yml
   - name: route96
     config: ./servers/configs/route96.yml
+  - name: blossom-reference
+    config: ./servers/configs/blossom-reference.yml

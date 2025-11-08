@@ -1,0 +1,15 @@
+services:
+  blossom:
+    image: ghcr.io/hzrd149/blossom-server:master
+    platform: linux/amd64
+    ports:
+      - "4700:3000"
+    volumes:
+      - blossom-reference-data:/app/data
+      - ../configs/blossom-server.config.yml:/app/config.yml:ro
+    environment:
+      RUST_LOG: info
+
+volumes:
+  blossom-reference-data:
+    driver: local

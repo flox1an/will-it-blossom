@@ -49,7 +49,7 @@ describe('BUD-07: Paid operations', () => {
     expect(hasLightning || hasCashu).toBe(true);
   });
 
-  testIf(shouldRun && paymentConfig?.proofHeader)(
+  testIf(shouldRun && Boolean(paymentConfig?.proofHeader))(
     'returns 400 with X-Reason when payment proof is invalid',
     async () => {
       const response = await invokeEndpoint({

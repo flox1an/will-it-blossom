@@ -1,15 +1,19 @@
 import { loadRootConfig, loadServerConfig } from '../runner/config.js';
 import { request, type Dispatcher } from 'undici';
 import { Buffer } from 'node:buffer';
-import type { HttpResponse, TestContext, TestSecrets } from '../runner/testContext.js';
+import type { HttpRequestOptions, HttpResponse, TestContext, TestSecrets } from '../runner/testContext.js';
 
 async function sendRequest(
-  method: string,
+  method: Dispatcher.HttpMethod,
   url: string,
-  options?: Dispatcher.RequestOptions,
+  options: HttpRequestOptions = {},
   includeBinary = false,
 ): Promise<HttpResponse> {
-  const response = await request(url, { method, ...options });
+  const response = await request(url, {
+    method,
+    headers: options.headers,
+    body: options.body,
+  });
   const headers = response.headers as Record<string, string | string[]>;
 
   if (includeBinary) {
@@ -51,12 +55,12 @@ async function initializeContext(): Promise<TestContext> {
   const serverConfig = await loadServerConfig(targetConfig.config);
 
   const http = {
-    get: (url: string, options?: Record<string, unknown>) => sendRequest('GET', url, options, true),
-    post: (url: string, options?: Record<string, unknown>) => sendRequest('POST', url, options),
-    put: (url: string, options?: Record<string, unknown>) => sendRequest('PUT', url, options),
-    delete: (url: string, options?: Record<string, unknown>) => sendRequest('DELETE', url, options),
-    head: (url: string, options?: Record<string, unknown>) => sendRequest('HEAD', url, options),
-    options: (url: string, options?: Record<string, unknown>) => sendRequest('OPTIONS', url, options),
+    get: (url: string, options?: HttpRequestOptions) => sendRequest('GET', url, options, true),
+    post: (url: string, options?: HttpRequestOptions) => sendRequest('POST', url, options),
+    put: (url: string, options?: HttpRequestOptions) => sendRequest('PUT', url, options),
+    delete: (url: string, options?: HttpRequestOptions) => sendRequest('DELETE', url, options),
+    head: (url: string, options?: HttpRequestOptions) => sendRequest('HEAD', url, options),
+    options: (url: string, options?: HttpRequestOptions) => sendRequest('OPTIONS', url, options),
   };
 
   const secrets: TestSecrets = serverConfig.secrets ?? {};

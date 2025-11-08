@@ -285,7 +285,14 @@ async function dockerComposeDown(start: DockerComposeStart): Promise<void> {
 
 function runDockerCompose(start: DockerComposeStart, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('docker', composeArgs(start, ...args), {
+    if (args.length === 0) {
+      reject(new Error('docker compose requires a command to be specified'));
+      return;
+    }
+
+    const [command, ...extra] = args;
+
+    const proc = spawn('docker', composeArgs(start, command, ...extra), {
       cwd: start.cwd,
       env: { ...process.env, ...(start.env ?? {}) },
       stdio: 'inherit',

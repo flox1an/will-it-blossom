@@ -1,0 +1,56 @@
+listenAddress: "0.0.0.0:3000"
+publicDomain: "http://localhost:4700"
+
+dashboard:
+  enabled: true
+  username: "admin"
+  password: "admin"
+
+upload:
+  enabled: true
+  requireAuth: true
+  requireAuthForDeletes: true
+  describeUploads: true
+  rules:
+    - pubkey: "npub1xvwh7yjwphac6hkgr3dspxwsre2y6p4a6snhvvr3nf9vgl9ghcfqupxecx"
+      allowUpload: true
+      allowDelete: true
+      allowList: true
+      allowListOthers: true
+  limits:
+    maxBytes: 100000000
+  storage:
+    type: "local"
+    local:
+      dir: "/app/data/uploads"
+
+media:
+  enabled: true
+  requireAuth: true
+  sizeLimits:
+    maxBytes: 20000000
+  image:
+    generateThumbnail: true
+    thumbnailSizes:
+      - 128
+      - 256
+      - 512
+
+list:
+  enabled: true
+  allowListOthers: true
+  requireAuth: false
+
+nip94:
+  publish: true
+  relay: "wss://relay.damus.io"
+  publicKey: "npub1xvwh7yjwphac6hkgr3dspxwsre2y6p4a6snhvvr3nf9vgl9ghcfqupxecx"
+  privateKey: "nsec1pyzl2vdftcefk8l95u8fj0h2yavpq2umy4q80ahv6q3gt9x3q6ds6hhrzk"
+
+discovery:
+  enabled: true
+
+storage:
+  type: "local"
+  local:
+    dir: "/app/data"

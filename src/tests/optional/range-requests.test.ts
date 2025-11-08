@@ -47,6 +47,9 @@ describe('Optional: HTTP Range Requests', () => {
     expect(response.status).toBe(206); // Partial Content
     expect(response.headers['content-range']).toMatch(/^bytes 0-99\//);
 
+    if (!response.arrayBuffer) {
+      throw new Error('Expected binary response data to be available');
+    }
     const data = Buffer.from(await response.arrayBuffer());
     expect(data.length).toBe(100);
   });
@@ -82,6 +85,9 @@ describe('Optional: HTTP Range Requests', () => {
     });
 
     expect(response.status).toBe(206);
+    if (!response.arrayBuffer) {
+      throw new Error('Expected binary response data to be available');
+    }
     const data = Buffer.from(await response.arrayBuffer());
     expect(data.length).toBe(100);
   });
