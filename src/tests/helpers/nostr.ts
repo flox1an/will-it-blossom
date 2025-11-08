@@ -41,7 +41,14 @@ export interface AuthorizationOptions {
  * @returns Finalized event with signature
  * @throws {Error} If private key is missing
  */
-export function signEvent(keys: KeyPair, template: Omit<EventTemplate, 'pubkey'>): Event {
+export type EventTemplateInput = {
+  kind: EventTemplate['kind'];
+  created_at?: EventTemplate['created_at'];
+  tags?: EventTemplate['tags'];
+  content?: EventTemplate['content'];
+};
+
+export function signEvent(keys: KeyPair, template: EventTemplateInput): Event {
   if (!keys.privateKey) {
     throw new Error('Missing private key for signing event');
   }
