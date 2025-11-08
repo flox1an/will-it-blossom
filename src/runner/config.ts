@@ -68,12 +68,26 @@ const RootConfigSchema = z.object({
 
 export type RootConfig = z.infer<typeof RootConfigSchema>;
 
+/**
+ * Loads and validates a server configuration from a YAML file.
+ *
+ * @param path - Path to the server configuration YAML file
+ * @returns Validated server configuration
+ * @throws {Error} If file cannot be read or validation fails
+ */
 export async function loadServerConfig(path: string): Promise<ServerConfig> {
   const content = await readFile(path, 'utf-8');
   const data = parse(content);
   return ServerConfigSchema.parse(data);
 }
 
+/**
+ * Loads and validates the root configuration file.
+ *
+ * @param path - Path to the root configuration file (default: .blossomrc.yml)
+ * @returns Validated root configuration
+ * @throws {Error} If file cannot be read or validation fails
+ */
 export async function loadRootConfig(path: string = '.blossomrc.yml'): Promise<RootConfig> {
   const content = await readFile(path, 'utf-8');
   const data = parse(content);
