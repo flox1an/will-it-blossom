@@ -5,10 +5,12 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
+import type { ServerConfig } from './config.js';
 import { loadRootConfig, loadServerConfig } from './config.js';
 import { startTarget, type StartedTarget } from './orchestrator.js';
 import { writeFeatureMatrix, writeServerInfo, writeManifest } from './reporters/feature-matrix.js';
 import { writeRunResultsFromJUnit } from './reporters/json-reporter.js';
+import { LOGGING } from './constants.js';
 
 // Ensure DOCKER_HOST is set for Testcontainers
 // Check common Docker socket locations if not already set
@@ -34,129 +36,214 @@ if (!process.env.DOCKER_HOST) {
 
 const [, , command, ...args] = process.argv;
 
-async function runTests(targetName?: string) {
+interface RunContext {
+  runId: string;
+  artifactsDir: string;
+}
+
+interface TargetResult {
+  id: string;
+  path: string;
+}
+
+/**
+ * Initializes a test run by creating a unique run ID and artifacts directory.
+ */
+function initializeRun(): RunContext {
+  const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const artifactsDir = join(process.cwd(), 'artifacts', runId);
+  return { runId, artifactsDir };
+}
+
+/**
+ * Runs Vitest tests for a specific target.
+ */
+async function runVitestForTarget(
+  targetName: string,
+  baseUrl: string,
+  artifactsDir: string
+): Promise<void> {
+  const vitestArgs = [
+    'vitest',
+    'run',
+    '--reporter=verbose',
+    '--reporter=junit',
+    `--outputFile=${join(artifactsDir, 'junit.xml')}`,
+  ];
+
+  const env = {
+    ...process.env,
+    BLOSSOM_TARGET: targetName,
+    BLOSSOM_BASE_URL: baseUrl,
+    BLOSSOM_ARTIFACTS_DIR: artifactsDir,
+  };
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn('npx', vitestArgs, {
+      stdio: 'inherit',
+      env,
+      // Note: shell: true removed for security
+    });
+
+    proc.on('exit', (code) => {
+      if (code === 0 || code === 1) {
+        // 0 = all pass, 1 = some failures (still want to continue)
+        resolve();
+      } else {
+        reject(new Error(`Vitest exited with code ${code} for target ${targetName}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to spawn vitest for target ${targetName}: ${err.message}`));
+    });
+  });
+}
+
+/**
+ * Generates test reports (JSON, feature matrix) for a target.
+ */
+async function generateReportsForTarget(
+  runContext: RunContext,
+  targetName: string,
+  baseUrl: string,
+  serverConfig: ServerConfig,
+  targetArtifactsDir: string
+): Promise<TargetResult | undefined> {
+  const results = await writeRunResultsFromJUnit({
+    junitPath: join(targetArtifactsDir, 'junit.xml'),
+    outDir: targetArtifactsDir,
+    meta: {
+      runId: runContext.runId,
+      target: targetName,
+      baseUrl,
+      specVersion: serverConfig.specVersion,
+      capabilities: serverConfig.capabilities,
+    },
+  }).catch(error => {
+    console.error(`Failed to build JSON results for ${targetName}:`, error);
+    return undefined;
+  });
+
+  await writeFeatureMatrix(targetArtifactsDir, serverConfig.capabilities, results?.tests ?? []);
+
+  if (results) {
+    return {
+      id: targetName,
+      path: join(targetName, 'results.json'),
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Tests a single target server.
+ */
+async function runTargetTests(
+  runContext: RunContext,
+  targetConfig: { name: string; config: string }
+): Promise<TargetResult | undefined> {
+  console.log(`\n${'='.repeat(LOGGING.SEPARATOR_LENGTH)}`);
+  console.log(`Testing target: ${targetConfig.name}`);
+  console.log('='.repeat(LOGGING.SEPARATOR_LENGTH));
+
+  const serverConfig = await loadServerConfig(targetConfig.config);
+  const targetArtifactsDir = join(runContext.artifactsDir, targetConfig.name);
+
+  let target: StartedTarget | undefined;
+  try {
+    // Start the target server
+    target = await startTarget(serverConfig);
+
+    // Write server metadata
+    await writeServerInfo(targetArtifactsDir, {
+      name: serverConfig.name,
+      baseUrl: target.baseUrl,
+      image: serverConfig.start.type === 'docker' ? serverConfig.start.image : undefined,
+      command: serverConfig.start.type === 'process' ? serverConfig.start.command : undefined,
+      specVersion: serverConfig.specVersion,
+      capabilities: serverConfig.capabilities,
+      limits: serverConfig.limits,
+    });
+
+    // Run tests
+    await runVitestForTarget(targetConfig.name, target.baseUrl, targetArtifactsDir);
+
+    // Generate reports
+    const result = await generateReportsForTarget(
+      runContext,
+      targetConfig.name,
+      target.baseUrl,
+      serverConfig,
+      targetArtifactsDir
+    );
+
+    console.log(`\nTarget ${targetConfig.name} completed successfully`);
+    return result;
+  } catch (error) {
+    console.error(`Error testing ${targetConfig.name}:`, error instanceof Error ? error.message : error);
+    return undefined;
+  } finally {
+    if (target) {
+      await target.stop().catch(err => {
+        console.error(`Failed to stop target ${targetConfig.name}:`, err instanceof Error ? err.message : err);
+      });
+    }
+  }
+}
+
+/**
+ * Finalizes a test run by writing the manifest and summary.
+ */
+async function finalizeRun(runContext: RunContext, targetResults: TargetResult[]): Promise<void> {
+  await writeManifest(runContext.artifactsDir, {
+    runId: runContext.runId,
+    createdAt: new Date().toISOString(),
+    targets: targetResults,
+  });
+
+  console.log(`\n${'='.repeat(LOGGING.SEPARATOR_LENGTH)}`);
+  console.log(`Test run complete: ${runContext.runId}`);
+  console.log(`Artifacts: ${runContext.artifactsDir}`);
+  console.log(`Tested ${targetResults.length} target(s)`);
+  console.log('='.repeat(LOGGING.SEPARATOR_LENGTH));
+}
+
+/**
+ * Runs conformance tests against configured Blossom server targets.
+ *
+ * @param targetName - Optional specific target name to test (tests all if not provided)
+ */
+async function runTests(targetName?: string): Promise<void> {
   const rootConfig = await loadRootConfig();
   const targets = targetName
     ? rootConfig.targets.filter(t => t.name === targetName)
     : rootConfig.targets;
 
   if (targets.length === 0) {
-    console.error(`No targets found${targetName ? ` matching "${targetName}"` : ''}`);
+    console.error(
+      `No targets found${targetName ? ` matching "${targetName}"` : ''}. ` +
+      `Check your .blossomrc.yml configuration.`
+    );
     process.exit(1);
   }
 
-  const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const artifactsDir = join(process.cwd(), 'artifacts', runId);
+  const runContext = initializeRun();
 
-  console.log(`Starting test run: ${runId}`);
+  console.log(`Starting test run: ${runContext.runId}`);
   console.log(`Targets: ${targets.map(t => t.name).join(', ')}`);
 
-  const manifestTargets: Array<{ id: string; path: string }> = [];
+  const targetResults: TargetResult[] = [];
 
   for (const targetConfig of targets) {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`Testing target: ${targetConfig.name}`);
-    console.log('='.repeat(60));
-
-    const serverConfig = await loadServerConfig(targetConfig.config);
-    const targetArtifactsDir = join(artifactsDir, targetConfig.name);
-
-    let target: StartedTarget | undefined;
-    try {
-      // Start the target
-      target = await startTarget(serverConfig);
-
-      // Write server info
-      await writeServerInfo(targetArtifactsDir, {
-        name: serverConfig.name,
-        baseUrl: target.baseUrl,
-        image: serverConfig.start.type === 'docker' ? serverConfig.start.image : undefined,
-        command: serverConfig.start.type === 'process' ? serverConfig.start.command : undefined,
-        specVersion: serverConfig.specVersion,
-        capabilities: serverConfig.capabilities,
-        limits: serverConfig.limits,
-      });
-
-      // Run vitest with the target
-      const vitestArgs = [
-        'vitest',
-        'run',
-        '--reporter=verbose',
-        '--reporter=junit',
-        `--outputFile=${join(targetArtifactsDir, 'junit.xml')}`,
-      ];
-
-      const env = {
-        ...process.env,
-        BLOSSOM_TARGET: targetConfig.name,
-        BLOSSOM_BASE_URL: target.baseUrl,
-        BLOSSOM_ARTIFACTS_DIR: targetArtifactsDir,
-      };
-
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn('npx', vitestArgs, {
-          stdio: 'inherit',
-          env,
-          shell: true,
-        });
-
-        proc.on('exit', (code) => {
-          if (code === 0 || code === 1) {
-            // 0 = all pass, 1 = some failures (still want to continue)
-            resolve();
-          } else {
-            reject(new Error(`Vitest exited with code ${code}`));
-          }
-        });
-
-        proc.on('error', reject);
-      });
-
-      const results = await writeRunResultsFromJUnit({
-        junitPath: join(targetArtifactsDir, 'junit.xml'),
-        outDir: targetArtifactsDir,
-        meta: {
-          runId,
-          target: targetConfig.name,
-          baseUrl: target.baseUrl,
-          specVersion: serverConfig.specVersion,
-          capabilities: serverConfig.capabilities,
-        },
-      }).catch(error => {
-        console.error(`Failed to build JSON results for ${targetConfig.name}:`, error);
-        return undefined;
-      });
-
-      await writeFeatureMatrix(targetArtifactsDir, serverConfig.capabilities, results?.tests ?? []);
-
-      if (results) {
-        manifestTargets.push({
-          id: targetConfig.name,
-          path: join(targetConfig.name, 'results.json'),
-        });
-      }
-
-      console.log(`\nTarget ${targetConfig.name} completed`);
-    } catch (error) {
-      console.error(`Error testing ${targetConfig.name}:`, error);
-    } finally {
-      if (target) {
-        await target.stop();
-      }
+    const result = await runTargetTests(runContext, targetConfig);
+    if (result) {
+      targetResults.push(result);
     }
   }
 
-  // Write manifest
-  await writeManifest(artifactsDir, {
-    runId,
-    createdAt: new Date().toISOString(),
-    targets: manifestTargets,
-  });
-
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`Test run complete: ${runId}`);
-  console.log(`Artifacts: ${artifactsDir}`);
-  console.log('='.repeat(60));
+  await finalizeRun(runContext, targetResults);
 }
 
 async function listTests() {

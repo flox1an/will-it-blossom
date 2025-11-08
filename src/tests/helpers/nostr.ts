@@ -2,22 +2,45 @@ import { finalizeEvent, type Event, type EventTemplate } from 'nostr-tools';
 import { hexToBytes } from 'nostr-tools/utils';
 import { Buffer } from 'node:buffer';
 
+/**
+ * Nostr key pair for signing events.
+ */
 export interface KeyPair {
   privateKey: string;
   publicKey?: string;
 }
 
+/**
+ * Authorization verbs for Blossom operations.
+ */
 export type AuthorizationVerb = 'get' | 'upload' | 'list' | 'delete' | 'media' | 'mirror';
 
+/**
+ * Options for building NIP-98 authorization headers.
+ */
 export interface AuthorizationOptions {
+  /** The operation being authorized */
   verb: AuthorizationVerb;
+  /** Optional blob hashes for hash-specific authorization */
   hashes?: string[];
+  /** Event content (default: "Authorize {verb}") */
   content?: string;
+  /** Expiration time in seconds (default: 600) */
   expiresInSeconds?: number;
+  /** Server URL to include in authorization */
   server?: string;
+  /** Additional NIP-98 tags */
   extraTags?: string[][];
 }
 
+/**
+ * Signs a Nostr event using NIP-01.
+ *
+ * @param keys - Key pair with private key for signing
+ * @param template - Event template without pubkey
+ * @returns Finalized event with signature
+ * @throws {Error} If private key is missing
+ */
 export function signEvent(keys: KeyPair, template: Omit<EventTemplate, 'pubkey'>): Event {
   if (!keys.privateKey) {
     throw new Error('Missing private key for signing event');
@@ -34,6 +57,23 @@ export function signEvent(keys: KeyPair, template: Omit<EventTemplate, 'pubkey'>
   return finalizeEvent(normalizedTemplate, privateKeyBytes);
 }
 
+/**
+ * Builds a NIP-98 HTTP Authorization header for Blossom requests.
+ *
+ * @param keys - Key pair for signing the authorization event
+ * @param options - Authorization options including verb, hashes, and expiration
+ * @returns Base64-encoded authorization header value with "Nostr" prefix
+ *
+ * @example
+ * ```typescript
+ * const auth = buildAuthorizationHeader(keys, {
+ *   verb: 'upload',
+ *   hashes: ['abc123...'],
+ *   server: 'https://blossom.example.com'
+ * });
+ * // Returns: "Nostr eyJpZCI6..."
+ * ```
+ */
 export function buildAuthorizationHeader(keys: KeyPair, options: AuthorizationOptions): string {
   const now = Math.floor(Date.now() / 1000);
   const tags: string[][] = [
