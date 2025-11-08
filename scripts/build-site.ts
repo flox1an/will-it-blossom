@@ -103,6 +103,7 @@ async function renderRun(
     const caps = res.capabilities.map(c => `<code>${c}</code>`).join(' ');
 
     const testsRows = res.tests
+      .sort((a, b) => a.title.localeCompare(b.title))
       .map(
         te => `
         <tr class="test-${te.status}">
