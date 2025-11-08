@@ -93,6 +93,7 @@ export async function uploadBlob(ctx: TestContext, options: UploadOptions = {}):
  * @returns 64-character hex hash, or null if not found
  */
 export function extractHashFromUrl(url: string): string | null {
-  const match = url.match(/([a-f0-9]{64})(?:\.[a-z0-9]+)?$/i);
+  // Match hash followed by optional file extensions (e.g., .jpg, .tar.gz)
+  const match = url.match(/([a-f0-9]{64})(?:\.[a-z0-9.]+)?$/i);
   return match ? match[1] : null;
 }
